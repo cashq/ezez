@@ -35,7 +35,11 @@ def trim(line):
     return out
 
 def usage():
-    print "%s [-hv] -o out_dir -y year -m month -d day -a artwork"
+    print "%s [-hv] -o out_dir -y year -m month -d day -a artwork" % (os.path.basename(sys.argv[0]))
+
+if not len(sys.argv[1:]):
+    usage()
+    sys.exit(1)
 
 try:
     opts, args = getopt.getopt(sys.argv[1:], "fhivo:y:m:d:a:", ["help", "output=", "year=", "month=", "day=", "artwork="])
