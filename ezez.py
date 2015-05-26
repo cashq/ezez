@@ -42,7 +42,7 @@ if not len(sys.argv[1:]):
     sys.exit(1)
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "fhivo:y:m:d:a:", ["help", "output=", "year=", "month=", "day=", "artwork="])
+    opts, args = getopt.getopt(sys.argv[1:], "fFhivo:y:m:d:a:", ["help", "output=", "year=", "month=", "day=", "artwork="])
 except getopt.GetoptError as err:
     print err
     usage()
@@ -52,6 +52,14 @@ dt = datetime.datetime.now().timetuple()
 is_current_year = False
 is_current_month = False 
 is_interactive = True
+is_forced = False
+is_a_cron_task = False 
+
+if not os.isatty(sys.stdin.fileno()):
+    is_a_cron_task = True
+    work_dir = "/tmp"
+else:
+    work_dir = "."
 
 for o, a in opts:
     if o == "-v":
@@ -68,6 +76,8 @@ for o, a in opts:
         outdir = re.sub(r'/*$', '', a)
     elif o in ("-f"):
         is_interactive = False
+    elif o in ("-F"):
+        is_forced = True
     elif o in ("-y", "--year"):
         year = int(a)
         if year < ezm_start_year and (year > dt[0]):
@@ -78,7 +88,7 @@ for o, a in opts:
     elif o in ("-m", "--month"):
         mon = int(a)
         if mon > 12 or (is_current_year and mon > dt[1]):
-            print "Invalid month:", year, "/*", mon, "*/", day
+            print "Invalid month:", year, "/*", mon
             sys.exit(1)
         if is_current_year and (mon == dt[1]):
             is_current_month = True
@@ -112,12 +122,6 @@ if not outdir:
     if DEBUG:
         print "Default output directory:", outdir
 
-#outdir = re.sub(r'/*$', '', sys.argv[1])
-#year = int(sys.argv[2])
-#mon = int(sys.argv[3])
-#day = int(sys.argv[4])
-#artwork = sys.argv[5]
-
 artist = u"小飞 & 喻舟"
 album = u"Easy Morning 飞鱼秀"
 
@@ -130,14 +134,23 @@ mon = "%02d" % mon
 day = "%02d" % day
 
 fname = "%s_%s%s_info.html" % (year, mon, day)
+fname = os.path.join(work_dir, fname);
+
 info_url = u"%s/%s/%s/%s/" % (siteurl, year, mon, day)
 if DEBUG:
-    print info_url
+    print info_url, fname
 
 urllib.urlretrieve(info_url.encode("UTF-8"), fname)
 if os.path.exists(fname):
+    if DEBUG:
+        print "proceed:", fname
     soup = BeautifulSoup.BeautifulSoup(open(fname))
     divs = soup.findAll("div", attrs={"class":"audio-content"})
+    if len(divs) < 1:
+        if not DEBUG and os.path.exists(fname):
+            os.unlink(fname)
+        if DEBUG:
+            print "content not found:", fname
     for div in divs:
         doit = False
         if not div is None and not div.p is None:
@@ -148,8 +161,8 @@ if os.path.exists(fname):
                     target = div.p.contents[0]
                 target = trim(target)
                 title = replace_html_code(target)
-                if DEBUG:
-                    print title
+                #if DEBUG:
+                #    print title
                 try:
                     m = re.search(r'\d+-(\d+)-(\d+)', title)
                     if DEBUG:
@@ -177,13 +190,17 @@ if os.path.exists(fname):
                     os.unlink(fname)
 
         outfile = "ezm_%s%s.mp3" % (mon, day)
-        if doit and not os.path.exists(("%s/%s") % (outdir, outfile)):
+        if os.path.exists(os.path.join(outdir, outfile)) and is_forced:
+                os.unlink(os.path.join(outdir, outfile))
+        if doit and (not os.path.exists(os.path.join(outdir, outfile))):
             down_url = "%s/%s/ezm%s%s%s.mp3" % (mp3url, year, myear, mon, day)
             if DEBUG:
-                print down_url
+                print down_url, os.path.join(outdir, outfile)
 
+            outfile = os.path.join(work_dir, outfile)
             if doit:
-                print "Start: ", title
+                #print "Start: ", title, outfile
+                print "Start: ", outfile
                 urllib.urlretrieve(down_url, outfile)
                 if os.path.exists(outfile):
                     mp3 = eyed3.load(outfile)
@@ -197,11 +214,10 @@ if os.path.exists(fname):
                             image = open(artwork, "rb").read()
                             mp3.tag.images.set(3, image, "image/jpeg")
                         mp3.tag.save()
-                        shutil.move(outfile, ("%s/%s") % (outdir, outfile))
-                        print "Done: ", title
-                    elif DEBUG:
-                        print "download link", down_url
-
+                        shutil.move(outfile, outdir)
+                        print "Done: ", os.path.join(outdir, outfile)
+            elif DEBUG:
+                print "download link", down_url, outfile
 else:
     print "Skip: %s%s%s" % (year, mon, day)
     if os.path.exists(outfile):
